@@ -1,0 +1,113 @@
+/*
+ * main.c
+ *
+ * Created: 4/10/2024 5:12:18 PM
+ *  Author: adria
+ */ 
+
+#define F_CPU 16000000
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+#include "PWM1/PWM1.h"
+#include "PWM2/PWM2.h"
+#include "PWM0/PWM0.h"
+
+void initADC(void);
+
+static volatile uint8_t bandera = 0;
+static volatile uint8_t adc_value1;
+static volatile uint8_t adc_value2;
+static volatile uint8_t adc_value3;
+
+int main(void)
+{	
+	cli();
+	initADC();
+	
+	initPWM1FastA(no_invertido, 8);
+	initPWM2FastA(no_invertido, 64);
+	initPWM0FastB(no_invertido, 1024);
+	
+	DDRD = 0xFF; // Habilitar puerto D como salida
+	UCSR0B = 0;
+	PORTD = 0;
+	
+	DDRB = 0xFF; // Habilitar puerto B como salida
+	PORTB = 0;
+	
+	DDRC = 0; // Habilitar puerto C como entrada
+		
+	sei(); // Habilitar interrupciones globales
+	
+    while(1)
+    {
+	if (bandera	== 0){
+		// Escoger canal  PINC1 -> ADC1 (Entrada)
+		ADMUX = (ADMUX & 0xF0) | 1;
+		ADCSRA |= (1<<ADSC); // Iniciar la secuencia del ADC
+		updateDutyCycle1(adc_value1); // Actualizar ciclo de trabajo 1
+		_delay_ms(10); 
+		bandera++;
+		
+	}else if (bandera == 1){	 
+		// Escoger canal  PINC3 -> ADC3 (Entrada)
+		ADMUX = (ADMUX & 0xF0) | 3;
+		ADCSRA |= (1<<ADSC); // Iniciar la secuencia del ADC
+		updateDutyCycle2(adc_value2); // Actualizar ciclo de trabajo 2
+		_delay_ms(10);
+		bandera++;	
+		}else if (bandera == 2){
+				// Escoger canal  PINC0 -> ADC0 (Entrada)
+				ADMUX = (ADMUX & 0xF0);
+				ADCSRA |= (1<<ADSC); // Iniciar la secuencia del ADC
+				updateDutyCycleB(adc_value3);
+				_delay_ms(10);
+				bandera++;
+			}else if (bandera == 3){
+					bandera = 0;
+					ADMUX = (ADMUX & 0xF0);
+			}
+	
+    }
+}
+
+
+void initADC(void){
+	
+	// Referencia AVCC = 5V
+	ADMUX |= (1 << REFS0);
+	ADMUX &= ~(1 << REFS1);
+	
+	// Justificación a la izquierda
+	ADMUX |= (1 << ADLAR);
+	
+	ADCSRA = 0;
+	// Habilitar la interrupción del ADC
+	ADCSRA |= (1 << ADIE);
+	
+	// Habilitar prescaler de 128, F_ADC = 125kHz
+	ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
+	
+	// Habilitando el ADC
+	ADCSRA |= (1 << ADEN);
+}
+
+
+ISR(ADC_vect){
+	if (ADMUX == 0x60){
+		adc_value3 = ADCH;
+		
+	}else if (ADMUX == 0x61){
+		adc_value1 = ADCH;
+		
+	}else if (ADMUX == 0x63){
+		adc_value2 = ADCH;
+		
+	}
+	
+	// Apagar la bandera
+	ADCSRA |= (1 << ADIF);
+	
+}
